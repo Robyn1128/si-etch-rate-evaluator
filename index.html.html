@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Si Etch Rate Evaluator｜矽蝕刻速率評估工具</title>
+<style>
+:root{
+  --room:#EEF1F4;      /* cleanroom grey-white */
+  --panel:#FFFFFF;
+  --ink:#1C2733;       /* silicon slate */
+  --ink-2:#4E5D6B;
+  --line:#CBD3DA;
+  --bath:#0E7C86;      /* KOH bath teal */
+  --bath-soft:#DDF0F1;
+  --oxide:#B85C1F;     /* thermal-oxide amber */
+  --oxide-soft:#F6E6D8;
+  --mask:#5B6B7B;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--room);color:var(--ink);
+  font:16px/1.55 "Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif}
+header{background:var(--ink);color:#fff;padding:18px 20px 16px}
+header h1{margin:0;font-size:1.35rem;font-weight:600;letter-spacing:.2px}
+header h1 small{display:block;font-weight:400;font-size:.9rem;color:#B9C6D1;margin-top:2px}
+nav{display:flex;gap:6px;overflow-x:auto;padding:10px 12px;background:#fff;border-bottom:1px solid var(--line);
+  position:sticky;top:0;z-index:5;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{flex:0 0 auto;border:1px solid var(--line);background:#fff;color:var(--ink-2);border-radius:20px;
+  padding:7px 14px;font-size:.9rem;cursor:pointer}
+nav button.on{background:var(--bath);border-color:var(--bath);color:#fff}
+nav button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.btn:focus-visible{outline:3px solid var(--oxide);outline-offset:2px}
+main{max-width:920px;margin:0 auto;padding:16px 14px 60px}
+section{display:none}
+section.on{display:block}
+h2{font-size:1.15rem;margin:8px 0 4px;font-weight:600}
+.lead{color:var(--ink-2);margin:0 0 14px;font-size:.93rem}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:block;font-size:.85rem;color:var(--ink-2);margin-bottom:4px}
+input,select,textarea{width:100%;border:1px solid var(--line);border-radius:6px;padding:9px 10px;font:inherit;background:#fff;color:var(--ink)}
+textarea{min-height:150px;resize:vertical}
+.row{display:flex;gap:8px;align-items:flex-end}
+.row select{width:auto;flex:0 0 auto}
+.btn{display:inline-block;border:none;border-radius:8px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer;background:var(--bath);color:#fff;margin-top:12px}
+.btn.ghost{background:#fff;color:var(--bath);border:1px solid var(--bath)}
+.btn.amber{background:var(--oxide)}
+.out{background:var(--bath-soft);border-left:4px solid var(--bath);border-radius:6px;padding:12px 14px;margin-top:14px;font-size:.95rem}
+.out.warn{background:var(--oxide-soft);border-left-color:var(--oxide)}
+.out b{font-variant-numeric:tabular-nums}
+.big{font-size:1.5rem;font-weight:700;margin:2px 0 6px;font-variant-numeric:tabular-nums}
+.eq{background:#F6F8FA;border:1px dashed var(--line);border-radius:6px;padding:10px 12px;font-size:.9rem;margin-top:12px;overflow-x:auto}
+.note{font-size:.82rem;color:var(--ink-2);margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:.9rem;margin-top:8px}
+th,td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left}
+td input{padding:6px 8px}
+svg.profile{width:100%;height:auto;background:#F6F8FA;border-radius:8px;border:1px solid var(--line)}
+canvas{width:100%;max-width:100%;background:#fff;border:1px solid var(--line);border-radius:8px}
+.pill{display:inline-block;padding:2px 9px;border-radius:12px;font-size:.78rem;background:var(--oxide-soft);color:var(--oxide);margin-left:6px}
+@media print{header,nav,.btn,.no-print{display:none!important}section{display:block!important;break-inside:avoid}main{padding:0}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Si Etch Rate Evaluator<small>矽蝕刻速率評估工具 — 濕蝕刻、乾蝕刻、選擇比、均勻度、Arrhenius 擬合</small></h1>
+</header>
+
+<nav id="nav">
+  <button data-t="basic" class="on">基本速率 Basic</button>
+  <button data-t="koh">KOH 濕蝕刻 Wet</button>
+  <button data-t="rie">RIE 乾蝕刻 Dry</button>
+  <button data-t="sel">選擇比／非等向性 Profile</button>
+  <button data-t="uni">均勻度 Uniformity</button>
+  <button data-t="arr">Arrhenius 擬合</button>
+  <button data-t="bosch">Bosch DRIE</button>
+  <button data-t="ref">參考文獻 References</button>
+</nav>
+
+<main>
+
+<!-- 1. BASIC -->
+<section id="basic" class="on">
+  <h2>基本蝕刻速率 Basic etch rate</h2>
+  <p class="lead">由量測到的厚度變化與時間求速率，並反推達到目標深度所需時間。<br>Etch rate from measured thickness change and time; solve for the time to a target depth.</p>
+  <div class="card">
+    <div class="grid">
+      <div><label>蝕刻前厚度／深度 Before</label><div class="row"><input id="b_d0" type="number" value="0" step="any"><select id="b_u0"><option>nm</option><option selected>µm</option><option>Å</option></select></div></div>
+      <div><label>蝕刻後厚度／深度 After</label><div class="row"><input id="b_d1" type="number" value="12.6" step="any"><select id="b_u1"><option>nm</option><option selected>µm</option><option>Å</option></select></div></div>
+      <div><label>蝕刻時間 Etch time</label><div class="row"><input id="b_t" type="number" value="10" step="any"><select id="b_ut"><option>s</option><option selected>min</option><option>h</option></select></div></div>
+      <div><label>目標深度 Target depth (µm)</label><input id="b_target" type="number" value="50" step="any"></div>
+      <div><label>過蝕刻裕度 Over-etch (%)</label><input id="b_over" type="number" value="10" step="any"></div>
+    </div>
+    <button class="btn" onclick="calcBasic()">計算 Calculate</button>
+    <div class="out" id="b_out">尚未計算 — 輸入數值後按「計算」。</div>
+    <div class="eq">ER = |d₁ − d₀| / t　　t<sub>target</sub> = D<sub>target</sub> × (1 + over%) / ER</div>
+  </div>
+</section>
+
+<!-- 2. KOH -->
+<section id="koh">
+  <h2>KOH 非等向性濕蝕刻 KOH anisotropic wet etching <span class="pill">Seidel model</span></h2>
+  <p class="lead">依 Seidel 等人（1990）經驗式估算 Si(100)／(110) 蝕刻速率，考慮溫度與濃度效應。<br>Estimates Si(100)/(110) etch rate vs. temperature and KOH concentration (Seidel et al., 1990).</p>
+  <div class="card">
+    <div class="grid">
+      <div><label>KOH 濃度 Concentration (wt%)</label><input id="k_w" type="number" value="30" step="any" min="15" max="60"></div>
+      <div><label>溫度 Temperature (°C)</label><input id="k_T" type="number" value="80" step="any"></div>
+      <div><label>晶面 Crystal plane</label><select id="k_plane"><option value="100">(100)</option><option value="110">(110)</option></select></div>
+      <div><label>目標深度 Target depth (µm)</label><input id="k_depth" type="number" value="100" step="any"></div>
+    </div>
+    <button class="btn" onclick="calcKOH()">計算 Calculate</button>
+    <button class="btn ghost" onclick="sweepKOH()">溫度掃描 T sweep (60–90 °C)</button>
+    <div class="out" id="k_out">尚未計算。</div>
+    <canvas id="k_chart" height="240" class="no-print"></canvas>
+    <div class="eq">R = k₀ · [H₂O]⁴ · [KOH]^¼ · exp(−E<sub>a</sub>/k<sub>B</sub>T)<br>
+      (100): k₀ = 2480 µm/h·(mol/L)<sup>−4.25</sup>, E<sub>a</sub> = 0.595 eV　(110): k₀ ≈ 4500（依 Seidel (110)/(100) ≈ 1.6 推估）, E<sub>a</sub> = 0.60 eV<br>
+      [KOH] = 1000·ρ·w/56.11，[H₂O] = 1000·ρ·(1−w)/18.015，ρ ≈ 1 + 0.0097·wt% (g/mL)</div>
+    <p class="note">(111) 面速率約為 (100) 的 1/100～1/400，故 (100) 晶圓上會形成 54.74° 的 V 形槽。SiO₂ 光罩在 KOH 中約 1–10 nm/min 被蝕刻；Si₃N₄ 幾乎不蝕刻。<br>
+      The (111) plane etches 100–400× slower, giving 54.74° sidewalls on (100) wafers. SiO₂ masks etch at ~1–10 nm/min in KOH; Si₃N₄ is nearly inert.</p>
+  </div>
+</section>
+
+<!-- 3. RIE -->
+<section id="rie">
+  <h2>RIE／電漿乾蝕刻 Reactive-ion etching <span class="pill">empirical power-law</span></h2>
+  <p class="lead">用可校正的冪次律模型，以參考製程為基準估算 RF 功率、壓力、氣體流量改變後的速率。<br>Calibratable power-law model: scales a reference recipe by RF power, pressure and gas flow.</p>
+  <div class="card">
+    <h3 style="font-size:.95rem;margin:0 0 8px">參考製程 Reference recipe</h3>
+    <div class="grid">
+      <div><label>參考速率 ER₀ (nm/min)</label><input id="r_er0" type="number" value="300" step="any"></div>
+      <div><label>參考功率 P₀ (W)</label><input id="r_P0" type="number" value="200" step="any"></div>
+      <div><label>參考壓力 p₀ (mTorr)</label><input id="r_p0" type="number" value="50" step="any"></div>
+      <div><label>參考流量 F₀ (sccm, SF₆)</label><input id="r_F0" type="number" value="50" step="any"></div>
+    </div>
+    <h3 style="font-size:.95rem;margin:16px 0 8px">新製程 New recipe</h3>
+    <div class="grid">
+      <div><label>RF 功率 P (W)</label><input id="r_P" type="number" value="300" step="any"></div>
+      <div><label>壓力 p (mTorr)</label><input id="r_p" type="number" value="30" step="any"></div>
+      <div><label>流量 F (sccm)</label><input id="r_F" type="number" value="60" step="any"></div>
+      <div><label>暴露面積比 Loading (open area %)</label><input id="r_load" type="number" value="20" step="any"></div>
+    </div>
+    <h3 style="font-size:.95rem;margin:16px 0 8px">指數 Exponents（依機台校正 calibrate per tool）</h3>
+    <div class="grid">
+      <div><label>a（功率 power）</label><input id="r_a" type="number" value="1.0" step="any"></div>
+      <div><label>b（壓力 pressure）</label><input id="r_b" type="number" value="-0.3" step="any"></div>
+      <div><label>c（流量 flow）</label><input id="r_c" type="number" value="0.5" step="any"></div>
+      <div><label>m（負載 loading）</label><input id="r_m" type="number" value="-0.2" step="any"></div>
+    </div>
+    <button class="btn" onclick="calcRIE()">計算 Calculate</button>
+    <div class="out" id="r_out">尚未計算。</div>
+    <div class="eq">ER = ER₀ · (P/P₀)<sup>a</sup> · (p/p₀)<sup>b</sup> · (F/F₀)<sup>c</sup> · (A<sub>open</sub>/20%)<sup>m</sup></div>
+    <p class="note">預設指數為 SF₆ 基 Si 蝕刻常見趨勢：速率隨功率（離子能量與自由基密度）上升；低壓時離子方向性佳但速率略降；流量增加提供更多 F 自由基；開口面積大則負載效應使速率下降。實際指數應以 DOE 數據擬合。<br>Default exponents reflect typical SF₆-based Si etching trends. Fit them from your own DOE data before use.</p>
+  </div>
+</section>
+
+<!-- 4. SELECTIVITY / ANISOTROPY -->
+<section id="sel">
+  <h2>選擇比、非等向性與側壁剖面 Selectivity, anisotropy &amp; sidewall profile</h2>
+  <p class="lead">評估光罩是否足夠、側向侵蝕量，並即時繪出溝槽剖面。<br>Checks mask budget and undercut, and draws the trench cross-section live.</p>
+  <div class="card">
+    <div class="grid">
+      <div><label>Si 垂直速率 ER<sub>v</sub> (nm/min)</label><input id="s_v" type="number" value="500" step="any" oninput="calcSel()"></div>
+      <div><label>Si 側向速率 ER<sub>l</sub> (nm/min)</label><input id="s_l" type="number" value="50" step="any" oninput="calcSel()"></div>
+      <div><label>光罩速率 ER<sub>mask</sub> (nm/min)</label><input id="s_m" type="number" value="10" step="any" oninput="calcSel()"></div>
+      <div><label>目標深度 Depth (µm)</label><input id="s_d" type="number" value="5" step="any" oninput="calcSel()"></div>
+      <div><label>光罩開口寬 Opening (µm)</label><input id="s_w" type="number" value="4" step="any" oninput="calcSel()"></div>
+      <div><label>現有光罩厚度 Mask thickness (nm)</label><input id="s_mt" type="number" value="200" step="any" oninput="calcSel()"></div>
+    </div>
+    <div class="out" id="s_out"></div>
+    <svg class="profile" id="s_svg" viewBox="0 0 400 220" aria-label="trench cross-section"></svg>
+    <div class="eq">S = ER<sub>Si</sub>/ER<sub>mask</sub>　　A<sub>f</sub> = 1 − ER<sub>l</sub>/ER<sub>v</sub>　　undercut = ER<sub>l</sub>·t　　mask<sub>min</sub> = ER<sub>mask</sub>·t·(1+safety)</div>
+  </div>
+</section>
+
+<!-- 5. UNIFORMITY -->
+<section id="uni">
+  <h2>晶圓內均勻度 Within-wafer uniformity</h2>
+  <p class="lead">輸入 5 或 9 點量測深度（或速率），計算均勻度指標。<br>Enter 5- or 9-point measurements to compute non-uniformity metrics.</p>
+  <div class="card">
+    <label>量測值（以逗號或空白分隔）Values, comma/space separated</label>
+    <textarea id="u_vals" style="min-height:70px">1.52, 1.48, 1.50, 1.45, 1.55, 1.49, 1.51, 1.47, 1.53</textarea>
+    <div class="grid" style="margin-top:10px">
+      <div><label>單位 Unit</label><select id="u_unit"><option>µm</option><option>nm</option><option>nm/min</option><option>µm/min</option></select></div>
+      <div><label>規格上限 Spec limit (%)</label><input id="u_spec" type="number" value="5" step="any"></div>
+    </div>
+    <button class="btn" onclick="calcUni()">計算 Calculate</button>
+    <div class="out" id="u_out">尚未計算。</div>
+    <div class="eq">NU<sub>range</sub> = (max−min)/(2·mean)×100%　　NU<sub>±</sub> = (max−min)/(max+min)×100%　　NU<sub>σ</sub> = σ/mean×100%</div>
+  </div>
+</section>
+
+<!-- 6. ARRHENIUS -->
+<section id="arr">
+  <h2>Arrhenius 擬合 Activation-energy fit</h2>
+  <p class="lead">輸入不同溫度下的速率，以 ln R 對 1/T 線性回歸求活化能 E<sub>a</sub> 與前置因子 A。<br>Linear regression of ln R vs. 1/T gives E<sub>a</sub> and the pre-factor A.</p>
+  <div class="card">
+    <table id="a_tbl">
+      <thead><tr><th>T (°C)</th><th>R (µm/min)</th><th></th></tr></thead>
+      <tbody>
+        <tr><td><input type="number" value="60" step="any"></td><td><input type="number" value="0.41" step="any"></td><td><button class="btn ghost" style="margin:0;padding:6px 10px" onclick="delRow(this)">✕</button></td></tr>
+        <tr><td><input type="number" value="70" step="any"></td><td><input type="number" value="0.72" step="any"></td><td><button class="btn ghost" style="margin:0;padding:6px 10px" onclick="delRow(this)">✕</button></td></tr>
+        <tr><td><input type="number" value="80" step="any"></td><td><input type="number" value="1.25" step="any"></td><td><button class="btn ghost" style="margin:0;padding:6px 10px" onclick="delRow(this)">✕</button></td></tr>
+        <tr><td><input type="number" value="90" step="any"></td><td><input type="number" value="2.05" step="any"></td><td><button class="btn ghost" style="margin:0;padding:6px 10px" onclick="delRow(this)">✕</button></td></tr>
+      </tbody>
+    </table>
+    <button class="btn ghost" onclick="addRow()">＋ 新增一列 Add row</button>
+    <button class="btn" onclick="calcArr()">擬合 Fit</button>
+    <div class="grid" style="margin-top:10px"><div><label>預測溫度 Predict at T (°C)</label><input id="a_pred" type="number" value="75" step="any"></div></div>
+    <div class="out" id="a_out">尚未擬合。</div>
+    <canvas id="a_chart" height="260"></canvas>
+    <div class="eq">ln R = ln A − E<sub>a</sub>/(k<sub>B</sub>T)　→　E<sub>a</sub> = −slope · k<sub>B</sub>，k<sub>B</sub> = 8.617×10⁻⁵ eV/K</div>
+  </div>
+</section>
+
+<!-- 7. BOSCH -->
+<section id="bosch">
+  <h2>Bosch 製程深反應離子蝕刻 Bosch-process DRIE</h2>
+  <p class="lead">以蝕刻／鈍化循環估算有效速率、總時間與扇貝（scallop）尺寸。<br>Effective rate, total time and scallop size from etch/passivation cycling.</p>
+  <div class="card">
+    <div class="grid">
+      <div><label>每循環蝕刻深度 Depth per cycle (nm)</label><input id="bo_dpc" type="number" value="500" step="any"></div>
+      <div><label>蝕刻步時間 Etch step (s)</label><input id="bo_te" type="number" value="7" step="any"></div>
+      <div><label>鈍化步時間 Passivation step (s)</label><input id="bo_tp" type="number" value="3" step="any"></div>
+      <div><label>目標深度 Target depth (µm)</label><input id="bo_D" type="number" value="200" step="any"></div>
+      <div><label>ARDE 係數 (rate loss per 10:1 AR, %)</label><input id="bo_arde" type="number" value="15" step="any"></div>
+      <div><label>溝槽寬 Trench width (µm)</label><input id="bo_w" type="number" value="10" step="any"></div>
+    </div>
+    <button class="btn" onclick="calcBosch()">計算 Calculate</button>
+    <div class="out" id="bo_out">尚未計算。</div>
+    <div class="eq">ER<sub>eff</sub> = d<sub>cycle</sub>/(t<sub>etch</sub>+t<sub>pass</sub>)　　N = D/d<sub>cycle</sub>　　ER<sub>ARDE</sub> ≈ ER<sub>eff</sub>·(1 − k·AR/10)　　scallop ≈ d<sub>cycle</sub>/2</div>
+  </div>
+</section>
+
+
+<!-- 8. REFERENCES -->
+<section id="ref">
+  <h2>參考文獻 References</h2>
+  <p class="lead">本工具的公式與常數來源。RIE 冪次律指數與 ARDE 係數為工程經驗值，需依機台 DOE 校正。<br>Sources for the models and constants used. RIE exponents and the ARDE coefficient are engineering estimates and must be calibrated per tool.</p>
+  <div class="card">
+    <ol style="padding-left:1.2em;font-size:.92rem;line-height:1.6">
+      <li>Seidel, H., Csepregi, L., Heuberger, A., &amp; Baumgärtel, H. (1990). Anisotropic etching of crystalline silicon in alkaline solutions I. Orientation dependence and behavior of passivation layers. <i>Journal of the Electrochemical Society, 137</i>(11), 3612–3626. — KOH 速率模型、k₀、E<sub>a</sub>、SiO₂ 光罩速率</li>
+      <li>Seidel, H., Csepregi, L., Heuberger, A., &amp; Baumgärtel, H. (1990). Anisotropic etching of crystalline silicon in alkaline solutions II. Influence of dopants. <i>Journal of the Electrochemical Society, 137</i>(11), 3626–3632.</li>
+      <li>Williams, K. R., &amp; Muller, R. S. (1996). Etch rates for micromachining processing. <i>Journal of Microelectromechanical Systems, 5</i>(4), 256–269. — 各材料在 KOH／RIE 中的速率與選擇比</li>
+      <li>Williams, K. R., Gupta, K., &amp; Wasilik, M. (2003). Etch rates for micromachining processing—Part II. <i>Journal of Microelectromechanical Systems, 12</i>(6), 761–778.</li>
+      <li>Kendall, D. L. (1979). Vertical etching of silicon at very high aspect ratios. <i>Annual Review of Materials Science, 9</i>, 373–403. — (110):(100):(111) 速率比</li>
+      <li>Shikida, M., Sato, K., Tokoro, K., &amp; Uchikawa, D. (2000). Differences in anisotropic etching properties of KOH and TMAH solutions. <i>Sensors and Actuators A, 80</i>(2), 179–188. — 活化能與晶面相關性</li>
+      <li>Laermer, F., &amp; Schilp, A. (1996). Method of anisotropically etching silicon. <i>U.S. Patent No. 5,501,893</i>. — Bosch 製程</li>
+      <li>Campbell, S. A. (2013). <i>Fabrication Engineering at the Micro- and Nanoscale</i> (4th ed.). Oxford University Press. — RIE 參數趨勢、選擇比、非等向性、均勻度定義</li>
+      <li>Gottscho, R. A., Jurgensen, C. W., &amp; Vitkavage, D. J. (1992). Microscopic uniformity in plasma etching. <i>Journal of Vacuum Science &amp; Technology B, 10</i>(5), 2133–2147. — ARDE（深寬比相關蝕刻）</li>
+    </ol>
+  </div>
+</section>
+
+</main>
+
+<script>
+/* ---------- navigation ---------- */
+document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('main section').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');document.getElementById(b.dataset.t).classList.add('on');
+});
+const kB=8.617333e-5;               // eV/K
+const f=(x,d=3)=>Number.isFinite(x)?x.toLocaleString('en-US',{maximumFractionDigits:d}):'—';
+const num=id=>parseFloat(document.getElementById(id).value);
+const toNm={nm:1,'µm':1000,'Å':0.1};
+const toMin={s:1/60,min:1,h:60};
+
+/* ---------- 1 basic ---------- */
+function calcBasic(){
+  const d0=num('b_d0')*toNm[document.getElementById('b_u0').value];
+  const d1=num('b_d1')*toNm[document.getElementById('b_u1').value];
+  const t=num('b_t')*toMin[document.getElementById('b_ut').value];
+  if(!(t>0)){show('b_out','時間必須大於 0。Time must be > 0.',true);return;}
+  const er=Math.abs(d1-d0)/t;                       // nm/min
+  const tt=num('b_target')*1000*(1+num('b_over')/100)/er;
+  show('b_out',`<div class="big">${f(er)} nm/min</div>= ${f(er/1000,4)} µm/min = ${f(er*60/1000)} µm/h = ${f(er/60,4)} nm/s<br>
+    到達目標深度 ${num('b_target')} µm（含 ${num('b_over')}% 過蝕刻）所需時間 Time to target: <b>${f(tt,1)} min</b> (${f(tt/60,2)} h)`);
+}
+
+/* ---------- 2 KOH (Seidel) ---------- */
+function kohRate(w,Tc,plane){
+  const rho=1+0.0097*w, T=Tc+273.15;
+  const KOH=1000*rho*(w/100)/56.11, H2O=1000*rho*(1-w/100)/18.015;
+  const p=plane==='110'?{k0:4500,Ea:0.60}:{k0:2480,Ea:0.595};
+  const R_umh=p.k0*Math.pow(H2O,4)*Math.pow(KOH,0.25)*Math.exp(-p.Ea/(kB*T));
+  return {R_umh,KOH,H2O,rho,Ea:p.Ea};
+}
+function calcKOH(){
+  const w=num('k_w'),Tc=num('k_T'),pl=document.getElementById('k_plane').value;
+  const r=kohRate(w,Tc,pl), umin=r.R_umh/60;
+  const tt=num('k_depth')/umin;
+  // mask loss (SiO2 ~ 5 nm/min at 80 °C, scaled by Arrhenius Ea≈0.85 eV as rough guide)
+  const ox=5*Math.exp(-0.85/kB*(1/(Tc+273.15)-1/353.15));
+  show('k_out',`<div class="big">${f(umin,3)} µm/min</div>= ${f(r.R_umh,1)} µm/h　[KOH] = ${f(r.KOH,2)} mol/L，[H₂O] = ${f(r.H2O,1)} mol/L，ρ = ${f(r.rho,3)} g/mL<br>
+    蝕刻 ${num('k_depth')} µm 需時 Time: <b>${f(tt,1)} min</b> (${f(tt/60,2)} h)<br>
+    估算 SiO₂ 光罩損耗 Est. SiO₂ mask loss: ~${f(ox,1)} nm/min → 全程約 ${f(ox*tt,0)} nm；建議使用 Si₃N₄ 或加厚氧化層。<br>
+    <span class="note">模型適用範圍 Valid range: 15–60 wt%, 20–100 °C；典型誤差 ±15–25%。低於 18 wt% 速率隨濃度上升，高於 18 wt% 則下降（Seidel 1990）。</span>`);
+  drawKOHchart(w,pl,Tc);
+}
+function sweepKOH(){calcKOH();}
+function drawKOHchart(w,pl,Tmark){
+  const c=document.getElementById('k_chart'),ctx=c.getContext('2d');c.width=c.clientWidth*2;c.height=480;ctx.scale(2,2);
+  const W=c.clientWidth,H=240,L=48,B=32,Tp=14,Rt=12;
+  const Ts=[];for(let T=60;T<=90;T+=2)Ts.push(T);
+  const ys=Ts.map(T=>kohRate(w,T,pl).R_umh/60), ymax=Math.max(...ys)*1.1;
+  ctx.clearRect(0,0,W,H);ctx.font='11px sans-serif';ctx.fillStyle='#4E5D6B';ctx.strokeStyle='#CBD3DA';
+  ctx.beginPath();ctx.moveTo(L,Tp);ctx.lineTo(L,H-B);ctx.lineTo(W-Rt,H-B);ctx.stroke();
+  const X=T=>L+(T-60)/30*(W-L-Rt), Y=y=>H-B-(y/ymax)*(H-B-Tp);
+  for(let i=0;i<=4;i++){const y=ymax*i/4;ctx.fillText(y.toFixed(2),4,Y(y)+4);ctx.beginPath();ctx.moveTo(L,Y(y));ctx.lineTo(W-Rt,Y(y));ctx.stroke();}
+  Ts.forEach((T,i)=>{if(i%5===0)ctx.fillText(T+'°C',X(T)-12,H-B+16);});
+  ctx.fillText('µm/min',4,10);ctx.fillText(`Si(${pl}), ${w} wt% KOH`,W-130,10);
+  ctx.strokeStyle='#0E7C86';ctx.lineWidth=2;ctx.beginPath();Ts.forEach((T,i)=>{i?ctx.lineTo(X(T),Y(ys[i])):ctx.moveTo(X(T),Y(ys[i]));});ctx.stroke();
+  if(Tmark>=60&&Tmark<=90){ctx.fillStyle='#B85C1F';ctx.beginPath();ctx.arc(X(Tmark),Y(kohRate(w,Tmark,pl).R_umh/60),5,0,7);ctx.fill();}
+}
+
+/* ---------- 3 RIE ---------- */
+function calcRIE(){
+  const er=num('r_er0')*Math.pow(num('r_P')/num('r_P0'),num('r_a'))*Math.pow(num('r_p')/num('r_p0'),num('r_b'))
+    *Math.pow(num('r_F')/num('r_F0'),num('r_c'))*Math.pow(num('r_load')/20,num('r_m'));
+  const ratio=er/num('r_er0');
+  show('r_out',`<div class="big">${f(er,1)} nm/min</div>= ${f(er/1000,3)} µm/min　相對參考製程 vs. reference: <b>×${f(ratio,2)}</b><br>
+    貢獻 Contributions — 功率 power ×${f(Math.pow(num('r_P')/num('r_P0'),num('r_a')),2)}，壓力 pressure ×${f(Math.pow(num('r_p')/num('r_p0'),num('r_b')),2)}，流量 flow ×${f(Math.pow(num('r_F')/num('r_F0'),num('r_c')),2)}，負載 loading ×${f(Math.pow(num('r_load')/20,num('r_m')),2)}`);
+}
+
+/* ---------- 4 selectivity / anisotropy / profile ---------- */
+function calcSel(){
+  const v=num('s_v'),l=num('s_l'),m=num('s_m'),D=num('s_d'),w=num('s_w'),mt=num('s_mt');
+  const t=D*1000/v, S=v/m, A=1-l/v, uc=l*t/1000, need=m*t*1.2;
+  const ok=mt>=need;
+  show('s_out',`選擇比 Selectivity Si:mask = <b>${f(S,1)} : 1</b>　非等向性因子 Anisotropy A<sub>f</sub> = <b>${f(A,3)}</b> ${A>0.95?'(近垂直 near-vertical)':A>0.5?'(部分非等向 partly anisotropic)':'(近等向 near-isotropic)'}<br>
+    蝕刻時間 t = ${f(t,1)} min　單側底切 undercut = <b>${f(uc,2)} µm</b> → 溝底寬 bottom width ≈ ${f(w+2*uc,2)} µm<br>
+    光罩需求（含 20% 安全）mask needed: <b>${f(need,0)} nm</b> — ${ok?'✅ 現有光罩足夠 current mask OK':'⚠️ 光罩不足，將被蝕穿 mask will be consumed'}`,!ok);
+  // SVG: 400×220, scale so depth+mask fits
+  const sc=Math.min(120/D, 300/(w+2*uc+2)); const cx=200, top=60, mh=Math.max(6,Math.min(30,mt/20));
+  const wo=w*sc, dd=D*sc, u=uc*sc, xL=cx-wo/2, xR=cx+wo/2;
+  const svg=document.getElementById('s_svg');
+  svg.innerHTML=`
+   <rect x="0" y="${top}" width="400" height="${220-top}" fill="#D8E1E8"/>
+   <text x="10" y="${top+18}" font-size="11" fill="#4E5D6B">Si substrate</text>
+   <rect x="0" y="${top-mh}" width="${xL}" height="${mh}" fill="#5B6B7B"/>
+   <rect x="${xR}" y="${top-mh}" width="${400-xR}" height="${mh}" fill="#5B6B7B"/>
+   <text x="10" y="${top-mh-6}" font-size="11" fill="#4E5D6B">mask ${mt} nm</text>
+   <path d="M${xL} ${top} Q${xL-u} ${top+dd*0.4} ${xL-u} ${top+dd*0.7} L${xL-u} ${top+dd} L${xR+u} ${top+dd} L${xR+u} ${top+dd*0.7} Q${xR+u} ${top+dd*0.4} ${xR} ${top} Z" fill="#F6F8FA" stroke="#0E7C86" stroke-width="2"/>
+   <line x1="${xR+u+14}" y1="${top}" x2="${xR+u+14}" y2="${top+dd}" stroke="#B85C1F" stroke-width="1.5"/>
+   <text x="${xR+u+18}" y="${top+dd/2+4}" font-size="11" fill="#B85C1F">D = ${D} µm</text>
+   <line x1="${xL}" y1="${top-mh-14}" x2="${xR}" y2="${top-mh-14}" stroke="#B85C1F" stroke-width="1.5"/>
+   <text x="${cx}" y="${top-mh-18}" font-size="11" fill="#B85C1F" text-anchor="middle">w = ${w} µm</text>
+   ${uc>0.01?`<text x="${xL-u-4}" y="${top+dd+14}" font-size="10" fill="#0E7C86" text-anchor="end">undercut ${f(uc,2)} µm</text>`:''}`;
+}
+
+/* ---------- 5 uniformity ---------- */
+function calcUni(){
+  const v=document.getElementById('u_vals').value.split(/[\s,;]+/).map(Number).filter(x=>Number.isFinite(x));
+  if(v.length<2){show('u_out','至少需要 2 個量測值。Need ≥ 2 values.',true);return;}
+  const n=v.length,mean=v.reduce((a,b)=>a+b)/n,mx=Math.max(...v),mn=Math.min(...v);
+  const sd=Math.sqrt(v.reduce((a,b)=>a+(b-mean)**2,0)/(n-1));
+  const nu1=(mx-mn)/(2*mean)*100,nu2=(mx-mn)/(mx+mn)*100,nu3=sd/mean*100,spec=num('u_spec');
+  const unit=document.getElementById('u_unit').value, pass=nu1<=spec;
+  show('u_out',`<div class="big">${f(nu1,2)} %</div>NU<sub>range</sub>（半範圍／平均）<br>
+    n = ${n}，mean = <b>${f(mean,4)} ${unit}</b>，min = ${f(mn,4)}，max = ${f(mx,4)}，σ = ${f(sd,4)} ${unit}<br>
+    NU<sub>±</sub> = ${f(nu2,2)} %　　1σ/mean = ${f(nu3,2)} %　　3σ/mean = ${f(3*nu3,2)} %<br>
+    判定 vs. spec ${spec}%: <b>${pass?'✅ PASS':'⚠️ FAIL — 檢查電漿密度分布／溶液攪拌／溫度梯度 check plasma density, agitation, temperature gradient'}</b>`,!pass);
+}
+
+/* ---------- 6 Arrhenius ---------- */
+function addRow(){const tb=document.querySelector('#a_tbl tbody');const tr=document.createElement('tr');
+  tr.innerHTML='<td><input type="number" step="any"></td><td><input type="number" step="any"></td><td><button class="btn ghost" style="margin:0;padding:6px 10px" onclick="delRow(this)">✕</button></td>';tb.appendChild(tr);}
+function delRow(b){b.closest('tr').remove();}
+function calcArr(){
+  const rows=[...document.querySelectorAll('#a_tbl tbody tr')].map(tr=>{const i=tr.querySelectorAll('input');return [parseFloat(i[0].value),parseFloat(i[1].value)];}).filter(r=>Number.isFinite(r[0])&&r[1]>0);
+  if(rows.length<2){show('a_out','至少需要 2 個有效點。Need ≥ 2 valid points.',true);return;}
+  const x=rows.map(r=>1/(r[0]+273.15)),y=rows.map(r=>Math.log(r[1])),n=x.length;
+  const mx=x.reduce((a,b)=>a+b)/n,my=y.reduce((a,b)=>a+b)/n;
+  let sxy=0,sxx=0,syy=0;for(let i=0;i<n;i++){sxy+=(x[i]-mx)*(y[i]-my);sxx+=(x[i]-mx)**2;syy+=(y[i]-my)**2;}
+  const slope=sxy/sxx,icpt=my-slope*mx,r2=sxy*sxy/(sxx*syy||1),Ea=-slope*kB,A=Math.exp(icpt);
+  const Tp=num('a_pred'),pred=A*Math.exp(-Ea/(kB*(Tp+273.15)));
+  show('a_out',`<div class="big">E<sub>a</sub> = ${f(Ea,3)} eV</div>= ${f(Ea*96.485,1)} kJ/mol　　A = ${A.toExponential(3)} µm/min　　R² = ${f(r2,4)}<br>
+    ${Ea>0.4?'E<sub>a</sub> > 0.4 eV：反應速率受表面反應控制 surface-reaction limited（溫度敏感）':'E<sub>a</sub> < 0.4 eV：偏向擴散／質傳控制 diffusion/mass-transport limited（溫度不敏感）'}<br>
+    預測 Predicted R(${Tp} °C) = <b>${f(pred,3)} µm/min</b>　速率每升高 10 °C 約 ×${f(Math.exp(Ea/kB*(1/(Tp+273.15)-1/(Tp+283.15))),2)}`);
+  drawArr(x,y,slope,icpt);
+}
+function drawArr(x,y,s,b){
+  const c=document.getElementById('a_chart'),ctx=c.getContext('2d');c.width=c.clientWidth*2;c.height=520;ctx.scale(2,2);
+  const W=c.clientWidth,H=260,L=52,B=34,T=14,Rt=14;
+  const xmin=Math.min(...x)*0.998,xmax=Math.max(...x)*1.002,ymin=Math.min(...y)-0.2,ymax=Math.max(...y)+0.2;
+  const X=v=>L+(v-xmin)/(xmax-xmin)*(W-L-Rt),Y=v=>H-B-(v-ymin)/(ymax-ymin)*(H-B-T);
+  ctx.clearRect(0,0,W,H);ctx.font='11px sans-serif';ctx.fillStyle='#4E5D6B';ctx.strokeStyle='#CBD3DA';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(L,T);ctx.lineTo(L,H-B);ctx.lineTo(W-Rt,H-B);ctx.stroke();
+  for(let i=0;i<=4;i++){const v=ymin+(ymax-ymin)*i/4;ctx.fillText(v.toFixed(2),6,Y(v)+4);const u=xmin+(xmax-xmin)*i/4;ctx.fillText((u*1000).toFixed(3),X(u)-16,H-B+16);}
+  ctx.fillText('ln R',6,10);ctx.fillText('1000/T (1/K)',W-90,H-6);
+  ctx.strokeStyle='#B85C1F';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(X(xmin),Y(s*xmin+b));ctx.lineTo(X(xmax),Y(s*xmax+b));ctx.stroke();
+  ctx.fillStyle='#0E7C86';x.forEach((v,i)=>{ctx.beginPath();ctx.arc(X(v),Y(y[i]),5,0,7);ctx.fill();});
+}
+
+/* ---------- 7 Bosch ---------- */
+function calcBosch(){
+  const d=num('bo_dpc'),te=num('bo_te'),tp=num('bo_tp'),D=num('bo_D'),k=num('bo_arde')/100,w=num('bo_w');
+  const er=d/(te+tp)*60/1000, N=Math.ceil(D*1000/d), t=N*(te+tp)/60, AR=D/w;
+  const erA=er*Math.max(0.2,1-k*AR/10), tA=D/erA;
+  show('bo_out',`<div class="big">${f(er,2)} µm/min</div>有效速率（不含 ARDE）effective rate　　循環數 cycles N = <b>${N}</b>　　總時間 t = ${f(t,1)} min<br>
+    深寬比 AR = ${f(AR,1)}:1 → ARDE 修正後速率 <b>${f(erA,2)} µm/min</b>，預估時間 ≈ <b>${f(tA,1)} min</b><br>
+    側壁扇貝 scallop ≈ ${f(d/2,0)} nm；蝕刻步佔比 duty = ${f(te/(te+tp)*100,0)} %`);
+}
+
+function show(id,html,warn){const o=document.getElementById(id);o.innerHTML=html;o.className='out'+(warn?' warn':'');}
+calcSel();
+</script>
+</body>
+</html>
