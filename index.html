@@ -69,7 +69,7 @@ canvas{width:100%;max-width:100%;background:#fff;border:1px solid var(--line);bo
   <button data-t="basic" class="on">基本速率 Basic</button>
   <button data-t="koh">KOH 濕蝕刻 Wet</button>
   <button data-t="rie">RIE 乾蝕刻 Dry</button>
-  <button data-t="sel">選擇比／非等向性 Profile</button>
+  <button data-t="sel">晶向／剖面 Orientation &amp; Profile</button>
   <button data-t="uni">均勻度 Uniformity</button>
   <button data-t="arr">Arrhenius 擬合</button>
   <button data-t="bosch">Bosch DRIE</button>
@@ -154,20 +154,30 @@ canvas{width:100%;max-width:100%;background:#fff;border:1px solid var(--line);bo
 
 <!-- 4. SELECTIVITY / ANISOTROPY -->
 <section id="sel">
-  <h2>選擇比、非等向性與側壁剖面 Selectivity, anisotropy &amp; sidewall profile</h2>
-  <p class="lead">評估光罩是否足夠、側向侵蝕量，並即時繪出溝槽剖面。<br>Checks mask budget and undercut, and draws the trench cross-section live.</p>
+  <h2>晶向、選擇比與蝕刻剖面 Wafer orientation, selectivity &amp; etched profile</h2>
+  <p class="lead">蝕刻後的形狀取決於蝕刻機制與晶圓晶向：KOH 在 (100) 形成 54.74° 斜壁的 V 形／梯形槽，在 (110) 形成垂直壁，等向性蝕刻形成圓弧，RIE 則近乎垂直。選擇模式後，剖面圖即時更新。<br>The etched shape depends on the etch mechanism and wafer orientation: KOH on (100) gives 54.74° V/trapezoid grooves bounded by (111) planes, on (110) vertical walls, isotropic etching gives a rounded bowl, and RIE gives near-vertical walls.</p>
   <div class="card">
     <div class="grid">
+      <div><label>蝕刻模式／晶向 Etch mode / wafer orientation</label>
+        <select id="s_mode" onchange="calcSel()">
+          <option value="koh100">KOH 濕蝕刻 — Si(100)</option>
+          <option value="koh110">KOH 濕蝕刻 — Si(110)</option>
+          <option value="koh111">KOH 濕蝕刻 — Si(111)</option>
+          <option value="iso">等向性濕蝕刻 Isotropic (HNA)</option>
+          <option value="rie" selected>RIE／DRIE 乾蝕刻（任意晶向 any orientation）</option>
+        </select></div>
       <div><label>Si 垂直速率 ER<sub>v</sub> (nm/min)</label><input id="s_v" type="number" value="500" step="any" oninput="calcSel()"></div>
-      <div><label>Si 側向速率 ER<sub>l</sub> (nm/min)</label><input id="s_l" type="number" value="50" step="any" oninput="calcSel()"></div>
+      <div id="s_lwrap"><label>Si 側向速率 ER<sub>l</sub> (nm/min)</label><input id="s_l" type="number" value="50" step="any" oninput="calcSel()"></div>
       <div><label>光罩速率 ER<sub>mask</sub> (nm/min)</label><input id="s_m" type="number" value="10" step="any" oninput="calcSel()"></div>
       <div><label>目標深度 Depth (µm)</label><input id="s_d" type="number" value="5" step="any" oninput="calcSel()"></div>
       <div><label>光罩開口寬 Opening (µm)</label><input id="s_w" type="number" value="4" step="any" oninput="calcSel()"></div>
       <div><label>現有光罩厚度 Mask thickness (nm)</label><input id="s_mt" type="number" value="200" step="any" oninput="calcSel()"></div>
     </div>
     <div class="out" id="s_out"></div>
-    <svg class="profile" id="s_svg" viewBox="0 0 400 220" aria-label="trench cross-section"></svg>
-    <div class="eq">S = ER<sub>Si</sub>/ER<sub>mask</sub>　　A<sub>f</sub> = 1 − ER<sub>l</sub>/ER<sub>v</sub>　　undercut = ER<sub>l</sub>·t　　mask<sub>min</sub> = ER<sub>mask</sub>·t·(1+safety)</div>
+    <svg class="profile" id="s_svg" viewBox="0 0 400 240" aria-label="etched cross-section"></svg>
+    <div class="eq" id="s_eq"></div>
+    <p class="note">晶向與形狀 Orientation → shape：(100) 晶圓上 {111} 面與表面夾角 54.74°，蝕刻被慢速 {111} 面「自我終止」，形成倒金字塔／V 形槽，深度上限 D<sub>max</sub> = w/(2·tan 54.74°) ≈ 0.707·w；(110) 晶圓上 {111} 面垂直於表面，可得高深寬比垂直槽（平面圖為 70.53°／109.47° 平行四邊形）；(111) 晶圓表面即為慢速面，幾乎不蝕刻。等向性蝕刻各方向速率相同，底切 ≈ 深度；RIE 靠離子轟擊方向性，形狀與晶向無關。<br>
+    On (100) wafers the {111} planes meet the surface at 54.74° and self-limit the etch into inverted pyramids / V-grooves (D<sub>max</sub> ≈ 0.707·w). On (110) wafers {111} planes are vertical, giving deep vertical trenches. (111) surfaces barely etch. Isotropic etching undercuts by about the depth; RIE shape is orientation-independent.</p>
   </div>
 </section>
 
@@ -324,28 +334,56 @@ function calcRIE(){
 
 /* ---------- 4 selectivity / anisotropy / profile ---------- */
 function calcSel(){
-  const v=num('s_v'),l=num('s_l'),m=num('s_m'),D=num('s_d'),w=num('s_w'),mt=num('s_mt');
-  const t=D*1000/v, S=v/m, A=1-l/v, uc=l*t/1000, need=m*t*1.2;
-  const ok=mt>=need;
-  show('s_out',`選擇比 Selectivity Si:mask = <b>${f(S,1)} : 1</b>　非等向性因子 Anisotropy A<sub>f</sub> = <b>${f(A,3)}</b> ${A>0.95?'(近垂直 near-vertical)':A>0.5?'(部分非等向 partly anisotropic)':'(近等向 near-isotropic)'}<br>
-    蝕刻時間 t = ${f(t,1)} min　單側底切 undercut = <b>${f(uc,2)} µm</b> → 溝底寬 bottom width ≈ ${f(w+2*uc,2)} µm<br>
-    光罩需求（含 20% 安全）mask needed: <b>${f(need,0)} nm</b> — ${ok?'✅ 現有光罩足夠 current mask OK':'⚠️ 光罩不足，將被蝕穿 mask will be consumed'}`,!ok);
-  // SVG: 400×220, scale so depth+mask fits
-  const sc=Math.min(120/D, 300/(w+2*uc+2)); const cx=200, top=60, mh=Math.max(6,Math.min(30,mt/20));
-  const wo=w*sc, dd=D*sc, u=uc*sc, xL=cx-wo/2, xR=cx+wo/2;
-  const svg=document.getElementById('s_svg');
-  svg.innerHTML=`
-   <rect x="0" y="${top}" width="400" height="${220-top}" fill="#D8E1E8"/>
-   <text x="10" y="${top+18}" font-size="11" fill="#4E5D6B">Si substrate</text>
+  const mode=document.getElementById('s_mode').value;
+  const v=num('s_v'),m=num('s_m'),D0=num('s_d'),w=num('s_w'),mt=num('s_mt');
+  const T54=Math.tan(54.74*Math.PI/180); // 1.4142
+  document.getElementById('s_lwrap').style.display=(mode==='rie')?'':'none';
+  let l, D=D0, uc, note='', eq='', selfStop=false, bottom;
+  if(mode==='koh100'){ l=v/400; const Dmax=w/(2*T54);
+    if(D0>=Dmax){D=Dmax;selfStop=true;} bottom=Math.max(0,w-2*D/T54); }
+  else if(mode==='koh110'){ l=v/200; bottom=w; }
+  else if(mode==='koh111'){ l=v; D=Math.min(D0,0.05*w+0.02); note='(111) 為慢速面，垂直速率僅為 (100) 的 1/100–1/400；此處 ER_v 視為 (111) 速率。'; bottom=w; }
+  else if(mode==='iso'){ l=v; bottom=w; }
+  else { l=num('s_l'); bottom=w; }
+  const t=D*1000/v, S=v/m, A=1-l/v, need=m*t*1.2, ok=mt>=need;
+  uc=l*t/1000;
+  let shapeTxt;
+  if(mode==='koh100'){ shapeTxt=selfStop?`V 形槽（自我終止）V-groove, self-limited at D<sub>max</sub> = <b>${f(D,2)} µm</b>；再延長時間深度不增，只增加底切`:`梯形槽 trapezoid, 側壁 54.74°，底寬 bottom = <b>${f(bottom,2)} µm</b>，若繼續蝕刻至 ${f(w/(2*T54),2)} µm 將成 V 形`; }
+  else if(mode==='koh110') shapeTxt='垂直側壁溝槽 vertical-wall trench（{111} ⟂ surface），底寬 = 開口寬';
+  else if(mode==='koh111') shapeTxt=`幾乎不蝕刻 negligible etching — 實際深度僅 ${f(D,3)} µm`;
+  else if(mode==='iso') shapeTxt=`圓弧形 rounded bowl，底切 ≈ 深度，總寬 ≈ <b>${f(w+2*uc,2)} µm</b>`;
+  else shapeTxt=`近垂直溝槽 near-vertical，底切 ${f(uc,2)} µm/側，底寬 ≈ ${f(w+2*uc,2)} µm`;
+  show('s_out',`形狀 Shape: ${shapeTxt}<br>
+    選擇比 Selectivity Si:mask = <b>${f(S,1)} : 1</b>　非等向性 A<sub>f</sub> = <b>${f(A,3)}</b>　蝕刻時間 t = ${f(t,1)} min　側向底切 undercut（光罩下）= <b>${f(uc,3)} µm</b><br>
+    光罩需求（含 20% 安全）mask needed: <b>${f(need,0)} nm</b> — ${ok?'✅ 現有光罩足夠 OK':'⚠️ 光罩不足 mask will be consumed'} ${note?'<br><span class="note">'+note+'</span>':''}`,!ok);
+  document.getElementById('s_eq').innerHTML=(mode==='koh100')?
+    'D<sub>max</sub> = w / (2·tan 54.74°) ≈ 0.707·w　　bottom = w − 2·D / tan 54.74°　　undercut ≈ ER<sub>(111)</sub>·t ≈ (ER<sub>(100)</sub>/400)·t':
+    'S = ER<sub>Si</sub>/ER<sub>mask</sub>　　A<sub>f</sub> = 1 − ER<sub>l</sub>/ER<sub>v</sub>　　undercut = ER<sub>l</sub>·t　　mask<sub>min</sub> = ER<sub>mask</sub>·t·(1+20%)';
+  // ---- SVG ----
+  const totalW=Math.max(w+2*uc, w)+2, sc=Math.min(130/Math.max(D,0.3), 300/totalW);
+  const cx=200, top=70, mh=Math.max(6,Math.min(30,mt/20)), wo=w*sc, dd=D*sc, u=uc*sc, xL=cx-wo/2, xR=cx+wo/2;
+  let path, lbl='';
+  if(mode==='koh100'){ const bw=bottom*sc; const bL=cx-bw/2,bR=cx+bw/2;
+    path=`M${xL-u} ${top} L${bL} ${top+dd} L${bR} ${top+dd} L${xR+u} ${top} Z`;
+    lbl=`<text x="${xR+u+4}" y="${top+dd*0.45}" font-size="11" fill="#0E7C86">54.74°</text><text x="${cx}" y="${top+dd+14}" font-size="10" fill="#4E5D6B" text-anchor="middle">{111} planes</text>`; }
+  else if(mode==='koh110'||mode==='koh111'){ path=`M${xL-u} ${top} L${xL-u} ${top+dd} L${xR+u} ${top+dd} L${xR+u} ${top} Z`;
+    lbl=mode==='koh110'?`<text x="${xR+u+4}" y="${top+dd*0.5}" font-size="11" fill="#0E7C86">90° {111}</text>`:`<text x="${cx}" y="${top+dd+16}" font-size="10" fill="#4E5D6B" text-anchor="middle">(111) surface — negligible etch</text>`; }
+  else if(mode==='iso'){ path=`M${xL} ${top} C${xL-u*1.1} ${top} ${xL-u} ${top+dd*0.6} ${xL-u*0.7} ${top+dd*0.95} Q${cx} ${top+dd*1.05} ${xR+u*0.7} ${top+dd*0.95} C${xR+u} ${top+dd*0.6} ${xR+u*1.1} ${top} ${xR} ${top} Z`;
+    lbl=`<text x="${cx}" y="${top+dd+16}" font-size="10" fill="#4E5D6B" text-anchor="middle">isotropic — orientation independent</text>`; }
+  else { path=`M${xL} ${top} Q${xL-u} ${top+dd*0.4} ${xL-u} ${top+dd*0.7} L${xL-u} ${top+dd} L${xR+u} ${top+dd} L${xR+u} ${top+dd*0.7} Q${xR+u} ${top+dd*0.4} ${xR} ${top} Z`;
+    lbl=`<text x="${cx}" y="${top+dd+16}" font-size="10" fill="#4E5D6B" text-anchor="middle">ion-directional — orientation independent</text>`; }
+  document.getElementById('s_svg').innerHTML=`
+   <rect x="0" y="${top}" width="400" height="${240-top}" fill="#D8E1E8"/>
+   <text x="10" y="${top+18}" font-size="11" fill="#4E5D6B">Si ${mode.startsWith('koh')?'('+mode.slice(3)+')':'substrate'}</text>
    <rect x="0" y="${top-mh}" width="${xL}" height="${mh}" fill="#5B6B7B"/>
    <rect x="${xR}" y="${top-mh}" width="${400-xR}" height="${mh}" fill="#5B6B7B"/>
    <text x="10" y="${top-mh-6}" font-size="11" fill="#4E5D6B">mask ${mt} nm</text>
-   <path d="M${xL} ${top} Q${xL-u} ${top+dd*0.4} ${xL-u} ${top+dd*0.7} L${xL-u} ${top+dd} L${xR+u} ${top+dd} L${xR+u} ${top+dd*0.7} Q${xR+u} ${top+dd*0.4} ${xR} ${top} Z" fill="#F6F8FA" stroke="#0E7C86" stroke-width="2"/>
-   <line x1="${xR+u+14}" y1="${top}" x2="${xR+u+14}" y2="${top+dd}" stroke="#B85C1F" stroke-width="1.5"/>
-   <text x="${xR+u+18}" y="${top+dd/2+4}" font-size="11" fill="#B85C1F">D = ${D} µm</text>
+   <path d="${path}" fill="#F6F8FA" stroke="#0E7C86" stroke-width="2"/>
+   <line x1="${cx+Math.max(wo/2+u,wo/2)+26}" y1="${top}" x2="${cx+Math.max(wo/2+u,wo/2)+26}" y2="${top+dd}" stroke="#B85C1F" stroke-width="1.5"/>
+   <text x="${cx+Math.max(wo/2+u,wo/2)+30}" y="${top+dd/2+4}" font-size="11" fill="#B85C1F">D = ${f(D,2)} µm</text>
    <line x1="${xL}" y1="${top-mh-14}" x2="${xR}" y2="${top-mh-14}" stroke="#B85C1F" stroke-width="1.5"/>
    <text x="${cx}" y="${top-mh-18}" font-size="11" fill="#B85C1F" text-anchor="middle">w = ${w} µm</text>
-   ${uc>0.01?`<text x="${xL-u-4}" y="${top+dd+14}" font-size="10" fill="#0E7C86" text-anchor="end">undercut ${f(uc,2)} µm</text>`:''}`;
+   ${lbl}`;
 }
 
 /* ---------- 5 uniformity ---------- */
